@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -9,6 +10,8 @@ const PASSWORD_ENV = 'UPLOAD_PASSWORD';
 
 const CONFIG_DIR = path.join(__dirname, 'config');
 const DESTINATION_PATH_FILE = path.join(CONFIG_DIR, 'destination-path.txt');
+
+let destinationReadErrorLogged = false;
 
 const ensureDestinationPathFile = () => {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
@@ -31,6 +34,10 @@ const readDestinationPath = () => {
       }
     }
   } catch (error) {
+    if (!destinationReadErrorLogged) {
+      console.error('Failed to read destination path file:', error);
+      destinationReadErrorLogged = true;
+    }
     return null;
   }
   return null;
@@ -47,21 +54,41 @@ const ensureDirectory = (directoryPath) => {
   fs.mkdirSync(directoryPath, { recursive: true });
 };
 
-const resolveUploadDirectory = (basePath, subdir) => {
-  const normalizedBase = path.resolve(basePath);
-  const cleanedSubdir = (subdir || '').replace(/\\/g, '/').trim();
-  if (cleanedSubdir && path.isAbsolute(cleanedSubdir)) {
+const sanitizeSubdir = (subdir) => {
+  const cleaned = (subdir || '').replace(/\\/g, '/').trim();
+  if (!cleaned) {
+    return '';
+  }
+  if (path.isAbsolute(cleaned)) {
     throw new Error('Subdirectory must be a relative path.');
   }
-  const targetDir = path.resolve(normalizedBase, cleanedSubdir);
-  if (targetDir !== normalizedBase && !targetDir.startsWith(`${normalizedBase}${path.sep}`)) {
+  if (cleaned.includes('\0')) {
+    throw new Error('Subdirectory contains invalid characters.');
+  }
+  const segments = cleaned.split('/').filter(Boolean);
+  for (const segment of segments) {
+    if (segment === '.' || segment === '..') {
+      throw new Error('Subdirectory must not use . or .. segments.');
+    }
+  }
+  return segments.join(path.sep);
+};
+
+const resolveUploadDirectory = (basePath, subdir) => {
+  const normalizedBase = path.resolve(basePath);
+  const cleanedSubdir = sanitizeSubdir(subdir);
+  const targetDir = cleanedSubdir
+    ? path.join(normalizedBase, cleanedSubdir)
+    : normalizedBase;
+  const relativeTarget = path.relative(normalizedBase, targetDir);
+  if (relativeTarget.startsWith('..') || path.isAbsolute(relativeTarget)) {
     throw new Error('Subdirectory must stay within the configured destination path.');
   }
   return targetDir;
 };
 
 const getPasswordFromRequest = (req) =>
-  req.header('x-upload-password') || req.query.password || '';
+  req.header('x-upload-password') || '';
 
 const getSubdirFromRequest = (req) =>
   req.header('x-upload-subdir') || req.query.subdir || '';
@@ -74,7 +101,13 @@ const requirePassword = (req, res, next) => {
     });
   }
   const provided = getPasswordFromRequest(req);
-  if (!provided || provided !== expected) {
+  const expectedBuffer = Buffer.from(expected);
+  const providedBuffer = Buffer.from(provided);
+  if (
+    !provided ||
+    expectedBuffer.length !== providedBuffer.length ||
+    !crypto.timingSafeEqual(expectedBuffer, providedBuffer)
+  ) {
     return res.status(401).json({ error: 'Unauthorized.' });
   }
   return next();
@@ -94,10 +127,16 @@ const loadUploadDir = (req, res, next) => {
   }
   try {
     ensureDirectory(basePath);
-    const targetDir = resolveUploadDirectory(basePath, getSubdirFromRequest(req));
+    const resolvedBasePath = fs.realpathSync(basePath);
+    const targetDir = resolveUploadDirectory(resolvedBasePath, getSubdirFromRequest(req));
     ensureDirectory(targetDir);
-    req.uploadBasePath = path.resolve(basePath);
-    req.uploadDir = targetDir;
+    const resolvedTargetDir = fs.realpathSync(targetDir);
+    const relativeTarget = path.relative(resolvedBasePath, resolvedTargetDir);
+    if (relativeTarget.startsWith('..') || path.isAbsolute(relativeTarget)) {
+      throw new Error('Subdirectory must stay within the configured destination path.');
+    }
+    req.uploadBasePath = resolvedBasePath;
+    req.uploadDir = resolvedTargetDir;
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
@@ -112,7 +151,11 @@ const storage = multer.diskStorage({
     return cb(null, req.uploadDir);
   },
   filename: (req, file, cb) => {
-    const safeName = path.basename(file.originalname || 'upload');
+    const originalName = file.originalname || 'upload';
+    const safeName = path.basename(originalName);
+    if (!safeName || safeName === '.' || safeName === '..' || safeName !== originalName) {
+      return cb(new Error('Invalid file name.'));
+    }
     return cb(null, safeName);
   },
 });
@@ -139,7 +182,7 @@ app.get('/', (req, res) => {
   <body>
     <h1>Navidrome Upload</h1>
     <p class="hint">
-      Configure the destination path in <code>${DESTINATION_PATH_FILE}</code> on the server.
+      Configure the destination path on the server (see the README).
       Passwords are checked against <code>${PASSWORD_ENV}</code>.
     </p>
     <form id="upload-form">
@@ -226,7 +269,8 @@ app.use((error, req, res, next) => {
   if (!error) {
     return next();
   }
-  return res.status(500).json({ error: error.message || 'Unexpected server error.' });
+  console.error('Unhandled server error:', error);
+  return res.status(500).json({ error: 'Unexpected server error.' });
 });
 
 ensureDestinationPathFile();
