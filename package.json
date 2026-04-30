@@ -1,0 +1,17 @@
+{
+  "name": "nd-server-upload",
+  "version": "1.0.0",
+  "description": "A small server tool to easily upload songs to Navidrome without SSH/FTP",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"No tests specified\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.2.1",
+    "multer": "^2.1.1"
+  }
+}
