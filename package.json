@@ -5,10 +5,10 @@
   "main": "dist/server.js",
   "scripts": {
     "dev:server": "tsx watch src/server.ts",
-    "dev:client": "npm --prefix client run dev",
+    "dev:client": "pnpm --prefix client dev",
     "build:server": "tsc -p tsconfig.json",
-    "build:client": "npm --prefix client run build",
-    "build": "npm run build:server && npm run build:client",
+    "build:client": "pnpm --prefix client build",
+    "build": "pnpm build:server && pnpm build:client",
     "start": "node dist/server.js",
     "test": "echo \"No tests specified\""
   },
@@ -16,6 +16,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/cors": "^2.8.19",
+    "cors": "^2.8.6",
     "express": "^5.2.1",
     "express-rate-limit": "^8.4.1",
     "multer": "^2.1.1"

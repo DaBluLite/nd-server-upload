@@ -1,0 +1,83 @@
+@utility bgp-* {
+    background: --value(--color-*);
+}
+
+@utility no-bg {
+    background: none;
+}
+
+@utility invis-btn {
+    @apply use-transition bg-transparent hover:bg-second-layer-thin-hover active:bg-second-layer-thin-active dark:hover:bg-second-layer-thin-hover-dark dark:active:bg-second-layer-thin-active-dark border border-transparent hover:border-faint hover:shadow-glass;
+}
+
+@utility btn {
+    @apply use-transition bg-second-layer-thin hover:bg-second-layer-thin-hover active:bg-second-layer-thin-active dark:bg-second-layer-thin-dark dark:hover:bg-second-layer-thin-hover-dark dark:active:bg-second-layer-thin-active-dark border border-faint shadow-glass;
+}
+
+@utility raised-interface {
+    @apply bg-second-layer-thin dark:bg-second-layer-thin-dark border border-faint shadow-glass;
+}
+
+@utility embed {
+    @apply bg-second-layer-thin dark:bg-second-layer-thin-dark border-r border-t border-b border-t-subtle border-b-subtle border-r-subtle rounded-r-lg;
+}
+
+@utility raised-interface-lg {
+    @apply bg-second-layer-thin border border-subtle shadow-glass;
+}
+
+@utility use-blur {
+    @apply backdrop-blur-normal translate-z-0;
+}
+
+@utility use-transition {
+    @apply transition-all duration-200 ease-in-out translate-z-0;
+}
+
+@utility use-enter-rtl {
+    @apply animate-enter-rtl translate-z-0;
+}
+
+@utility use-enter-ltr {
+    @apply animate-enter-ltr translate-z-0;
+}
+
+@utility use-enter-ttb {
+    @apply animate-enter-ttb translate-z-0;
+}
+
+@utility use-enter-btt {
+    @apply animate-enter-btt translate-z-0;
+}
+
+@utility use-horizontal-tab-indicator {
+    @apply animate-horizontal-tab-indicator translate-z-0;
+}
+
+@utility use-user-area-container {
+    @apply animate-user-area-container translate-z-0;
+}
+
+@utility use-sidebar-indicator {
+    @apply animate-sidebar-indicator translate-z-0;
+}
+
+@utility use-exit-rtl {
+    @apply animate-exit-rtl translate-z-0;
+}
+
+@utility use-exit-ltr {
+    @apply animate-exit-ltr translate-z-0;
+}
+
+@utility use-exit-ttb {
+    @apply animate-exit-ttb translate-z-0;
+}
+
+@utility btn-accent {
+    @apply btn bg-[#0084ff]/24 hover:bg-[#0084ff]/40 active:bg-[#0084ff]/40 text-white;
+}
+
+@utility btn-danger {
+    @apply btn bg-red-500/24 hover:bg-red-400/40 active:bg-red-600/40 text-white;
+}

@@ -4,11 +4,11 @@ A small server tool to easily upload songs to Navidrome without SSH/FTP.
 ## Setup
 1. Install server dependencies:
    ```bash
-   npm install
+   pnpm i
    ```
 2. Install client dependencies:
    ```bash
-   npm --prefix client install
+   pnpm --prefix client i
    ```
 3. Set the upload password:
    ```bash
@@ -16,11 +16,11 @@ A small server tool to easily upload songs to Navidrome without SSH/FTP.
    ```
 4. Build the client and server:
    ```bash
-   npm run build
+   pnpm build
    ```
 5. Start the server:
    ```bash
-   npm start
+   pnpm start
    ```
 6. On first run, the server creates `config/destination-path.txt`. Add the absolute destination path (one line):
    ```text
@@ -30,10 +30,10 @@ A small server tool to easily upload songs to Navidrome without SSH/FTP.
 ## Development
 Run the API and UI in separate terminals:
 ```bash
-npm run dev:server
+pnpm dev:server
 ```
 ```bash
-npm --prefix client run dev
+pnpm --prefix client dev
 ```
 
 ## Uploading

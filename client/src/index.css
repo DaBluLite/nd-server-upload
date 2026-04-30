@@ -1,13 +1,161 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import url("https://fonts.googleapis.com/css2?family=Unbounded:wght@200..900&display=swap");
+@import "tailwindcss";
+@import "./utilities.css";
 
-@layer base {
-  body {
-    @apply bg-slate-950 text-slate-100 antialiased;
-  }
+@theme {
+    --color-first-layer: hsla(0deg 0% 70% / 60%);
 
-  code {
-    @apply rounded bg-slate-800/80 px-1 py-0.5 text-slate-100;
-  }
+    --color-faint: color-mix(
+        in oklab,
+        hsl(240 calc(1 * 4%) 60.784%/0.0392156862745098) 100%,
+        hsl(0 0% 0%/0.0392156862745098) 0%
+    );
+    --color-subtle: color-mix(
+        in oklab,
+        hsl(240 calc(1 * 4%) 60.784%/0.12156862745098039) 100%,
+        hsl(0 0% 0%/0.12156862745098039) 0%
+    );
+
+    --animate-enter-rtl: animate-rtl 0.4s ease;
+    --animate-enter-ltr: animate-ltr 0.4s ease;
+    --animate-enter-ttb: animate-ttb 0.4s ease;
+    --animate-enter-btt: animate-btt 0.4s ease;
+    --animate-horizontal-tab-indicator: animate-horizontal-tab-indicator 0.4s
+        ease;
+    --animate-sidebar-indicator: animate-sidebar-indicator 0.4s ease;
+    --animate-exit-ltr: animate-rtl 0.4s ease reverse;
+    --animate-exit-rtl: animate-ltr 0.4s ease reverse;
+    --animate-exit-ttb: animate-btt 0.4s ease reverse;
+    --animate-user-area-container: animate-user-area-container 0.4s ease;
+
+    --color-second-layer: rgb(255 255 255/60%);
+    --color-second-layer-thin: hsl(240 4% 60.784%/0.1607843137254902);
+    --color-second-layer-thin-hover: hsl(240 4% 60.784%/0.2784313725490196);
+    --color-second-layer-thin-active: hsl(233.333 3.734% 52.745%/0.08);
+
+    --color-second-layer-dark: rgb(0 0 0/60%);
+    --color-second-layer-thin-dark: hsl(240 4% 60.784%/0.12156862745098039);
+    --color-second-layer-thin-hover-dark: hsl(240 4% 60.784%/0.2);
+    --color-second-layer-thin-active-dark: hsl(234.545 6.509% 33.137%/0.3);
+
+    --blur-normal: 16px;
+    --shadow-main:
+        0 4px 10px 0 rgb(0 0 0 / 40%), inset 0 1px 0 var(--color-faint);
+    --shadow-glass: inset 0 1px 0 var(--color-faint);
+
+    --radius-xl: 20px;
+    --radius-ri: 50px;
+    --radius-i: 24px;
+    --radius-xl: 20px;
+    --radius-lg: 16px;
+    --radius-md: 12px;
+    --radius-sm: 8px;
+    --radius-xs: 4px;
+
+    @keyframes animate-rtl {
+        0% {
+            opacity: 0;
+            transform: translateX(20px) translateZ(0);
+        }
+        100% {
+            opacity: 1;
+            transform: translateX(0) translateZ(0);
+        }
+    }
+
+    @keyframes animate-ltr {
+        0% {
+            opacity: 0;
+            transform: translateX(-20px) translateZ(0);
+        }
+        100% {
+            opacity: 1;
+            transform: translateX(0) translateZ(0);
+        }
+    }
+
+    @keyframes animate-ttb {
+        0% {
+            opacity: 0;
+            transform: translateY(-20px) translateZ(0);
+        }
+        100% {
+            opacity: 1;
+            transform: translateY(0) translateZ(0);
+        }
+    }
+
+    @keyframes animate-btt {
+        0% {
+            opacity: 0;
+            transform: translateY(20px) translateZ(0);
+        }
+        100% {
+            opacity: 1;
+            transform: translateY(0) translateZ(0);
+        }
+    }
+
+    @keyframes animate-horizontal-tab-indicator {
+        0% {
+            opacity: 0;
+            transform: translateY(20px) translateZ(0) scaleX(0.75);
+        }
+        100% {
+            opacity: 1;
+            transform: translateY(0) translateZ(0) scaleX(1);
+        }
+    }
+
+    @keyframes animate-sidebar-indicator {
+        0% {
+            opacity: 0;
+            transform: translateX(-10px) translateZ(0) scale(0.75);
+        }
+        50% {
+            opacity: 1;
+            transform: translateX(2px) translateZ(0) scale(1.1);
+        }
+        100% {
+            opacity: 1;
+            transform: translateX(0) translateZ(0) scale(1);
+        }
+    }
+
+    @keyframes exit-rtl {
+        0% {
+            opacity: 1;
+            transform: translateX(0) translateZ(0);
+        }
+        100% {
+            opacity: 0;
+            transform: translateX(-20px) translateZ(0);
+        }
+    }
+
+    @keyframes exit-ltr {
+        0% {
+            opacity: 1;
+            transform: translateX(0) translateZ(0);
+        }
+        100% {
+            opacity: 0;
+            transform: translateX(20px) translateZ(0);
+        }
+    }
+
+    @keyframes animate-user-area-container {
+        0% {
+            opacity: 0;
+            transform: translateY(10px) translateZ(0) scale(0.75);
+        }
+        75% {
+            opacity: 1;
+            transform: translateY(2px) translateZ(0) scale(1.01);
+        }
+        100% {
+            opacity: 1;
+            transform: translateY(0) translateZ(0) scale(1);
+        }
+    }
 }
