@@ -14,6 +14,8 @@ const DESTINATION_PATH_FILE = path.join(CONFIG_DIR, 'destination-path.txt')
 const CLIENT_DIST_DIR = path.join(PROJECT_ROOT, 'client', 'dist')
 const UPLOAD_RATE_LIMIT_WINDOW_MS = 60 * 1000
 const UPLOAD_RATE_LIMIT_MAX_REQUESTS = 30
+const CLIENT_RATE_LIMIT_WINDOW_MS = 60 * 1000
+const CLIENT_RATE_LIMIT_MAX_REQUESTS = 120
 const WINDOWS_RESERVED_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i
 const INVALID_FILENAME_CHARS = /[<>:"/\\|?*\x00-\x1F]/
 const TRAILING_DOTS_SPACES = /[. ]+$/
@@ -100,6 +102,9 @@ const getSubdirFromRequest = (req: Request): string => {
     return headerValue
   }
   const queryValue = req.query.subdir
+  if (Array.isArray(queryValue)) {
+    throw new Error('Subdirectory must be a single value.')
+  }
   return typeof queryValue === 'string' ? queryValue : ''
 }
 
@@ -207,6 +212,11 @@ const uploadRateLimiter = createRateLimiter({
   maxRequests: UPLOAD_RATE_LIMIT_MAX_REQUESTS,
 })
 
+const clientRateLimiter = createRateLimiter({
+  windowMs: CLIENT_RATE_LIMIT_WINDOW_MS,
+  maxRequests: CLIENT_RATE_LIMIT_MAX_REQUESTS,
+})
+
 const getSafeFilename = (originalName: string) => {
   const safeName = path.basename(originalName || 'upload')
   if (!safeName || safeName === '.' || safeName === '..' || safeName !== originalName) {
@@ -243,12 +253,12 @@ app.post(
 )
 
 if (fs.existsSync(CLIENT_DIST_DIR)) {
-  app.use(express.static(CLIENT_DIST_DIR))
-  app.get('*', (_req, res) => {
+  app.use(clientRateLimiter, express.static(CLIENT_DIST_DIR))
+  app.get('*', clientRateLimiter, (_req, res) => {
     res.sendFile(path.join(CLIENT_DIST_DIR, 'index.html'))
   })
 } else {
-  app.get('/', (_req, res) => {
+  app.get('/', clientRateLimiter, (_req, res) => {
     res.type('text').send('Client build not found. Run "npm --prefix client run build".')
   })
 }
