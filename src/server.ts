@@ -104,7 +104,7 @@ const getSubdirFromRequest = (req: Request): string => {
   }
   const queryValue = req.query.subdir
   if (Array.isArray(queryValue)) {
-    throw new Error('Subdirectory must be a single value.')
+    throw new Error('Subdirectory must be a single value, not an array.')
   }
   return typeof queryValue === 'string' ? queryValue : ''
 }
