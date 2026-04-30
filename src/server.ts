@@ -1,5 +1,6 @@
 import crypto from 'crypto'
 import express, { type NextFunction, type Request, type Response } from 'express'
+import rateLimit from 'express-rate-limit'
 import fs from 'fs'
 import path from 'path'
 import multer from 'multer'
@@ -177,44 +178,24 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage })
 
-const createRateLimiter = ({ windowMs, maxRequests }: { windowMs: number; maxRequests: number }) => {
-  const hits = new Map<string, { start: number; count: number }>()
-  const cleanup = () => {
-    const now = Date.now()
-    for (const [key, entry] of hits.entries()) {
-      if (now - entry.start >= windowMs) {
-        hits.delete(key)
-      }
-    }
-  }
-  const cleanupInterval = setInterval(cleanup, windowMs)
-  cleanupInterval.unref()
-  return (req: Request, res: Response, next: NextFunction) => {
-    const key = req.ip || 'unknown'
-    const now = Date.now()
-    const entry = hits.get(key)
-    if (!entry || now - entry.start >= windowMs) {
-      hits.set(key, { start: now, count: 1 })
-      return next()
-    }
-    entry.count += 1
-    if (entry.count > maxRequests) {
-      return res.status(429).json({
-        error: 'Too many upload requests. Please try again later.',
-      })
-    }
-    return next()
-  }
-}
-
-const uploadRateLimiter = createRateLimiter({
+const uploadRateLimiter = rateLimit({
   windowMs: UPLOAD_RATE_LIMIT_WINDOW_MS,
-  maxRequests: UPLOAD_RATE_LIMIT_MAX_REQUESTS,
+  max: UPLOAD_RATE_LIMIT_MAX_REQUESTS,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({ error: 'Too many upload requests. Please try again later.' })
+  },
 })
 
-const clientRateLimiter = createRateLimiter({
+const clientRateLimiter = rateLimit({
   windowMs: CLIENT_RATE_LIMIT_WINDOW_MS,
-  maxRequests: CLIENT_RATE_LIMIT_MAX_REQUESTS,
+  max: CLIENT_RATE_LIMIT_MAX_REQUESTS,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).type('text').send('Too many requests. Please try again later.')
+  },
 })
 
 const getSafeFilename = (originalName: string) => {
