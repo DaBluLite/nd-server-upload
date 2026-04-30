@@ -10,6 +10,8 @@ const PASSWORD_ENV = 'UPLOAD_PASSWORD';
 
 const CONFIG_DIR = path.join(__dirname, 'config');
 const DESTINATION_PATH_FILE = path.join(CONFIG_DIR, 'destination-path.txt');
+const UPLOAD_RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const UPLOAD_RATE_LIMIT_MAX_REQUESTS = 30;
 
 let destinationReadErrorLogged = false;
 
@@ -162,13 +164,38 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+const createRateLimiter = ({ windowMs, maxRequests }) => {
+  const hits = new Map();
+  return (req, res, next) => {
+    const key = req.ip || 'unknown';
+    const now = Date.now();
+    const entry = hits.get(key);
+    if (!entry || now - entry.start >= windowMs) {
+      hits.set(key, { start: now, count: 1 });
+      return next();
+    }
+    entry.count += 1;
+    if (entry.count > maxRequests) {
+      return res.status(429).json({
+        error: 'Too many upload requests. Please try again later.',
+      });
+    }
+    return next();
+  };
+};
+
+const uploadRateLimiter = createRateLimiter({
+  windowMs: UPLOAD_RATE_LIMIT_WINDOW_MS,
+  maxRequests: UPLOAD_RATE_LIMIT_MAX_REQUESTS,
+});
+
 app.get('/', (req, res) => {
   res.type('html').send(`<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Navidrome Upload</title>
+    <title>nd-server-upload</title>
     <style>
       body { font-family: Arial, sans-serif; margin: 2rem; max-width: 720px; }
       form { display: grid; gap: 0.75rem; }
@@ -180,7 +207,7 @@ app.get('/', (req, res) => {
     </style>
   </head>
   <body>
-    <h1>Navidrome Upload</h1>
+    <h1>nd-server-upload</h1>
     <p class="hint">
       Configure the destination path on the server (see the README).
       Passwords are checked against <code>${PASSWORD_ENV}</code>.
@@ -252,7 +279,13 @@ app.get('/', (req, res) => {
 </html>`);
 });
 
-app.post('/upload', requirePassword, loadUploadDir, upload.single('file'), (req, res) => {
+app.post(
+  '/upload',
+  uploadRateLimiter,
+  requirePassword,
+  loadUploadDir,
+  upload.single('file'),
+  (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded.' });
   }
@@ -263,7 +296,8 @@ app.post('/upload', requirePassword, loadUploadDir, upload.single('file'), (req,
     message: `Uploaded ${req.file.originalname}.`,
     storedAs: relativePath,
   });
-});
+  }
+);
 
 app.use((error, req, res, next) => {
   if (!error) {
