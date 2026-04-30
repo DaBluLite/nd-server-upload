@@ -12,6 +12,9 @@ const CONFIG_DIR = path.join(__dirname, 'config');
 const DESTINATION_PATH_FILE = path.join(CONFIG_DIR, 'destination-path.txt');
 const UPLOAD_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const UPLOAD_RATE_LIMIT_MAX_REQUESTS = 30;
+const WINDOWS_RESERVED_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+const INVALID_FILENAME_CHARS = /[<>:"/\\|?*\x00-\x1F]/;
+const TRAILING_DOTS_SPACES = /[. ]+$/;
 
 let destinationReadErrorLogged = false;
 
@@ -153,12 +156,12 @@ const storage = multer.diskStorage({
     return cb(null, req.uploadDir);
   },
   filename: (req, file, cb) => {
-    const originalName = file.originalname || 'upload';
-    const safeName = path.basename(originalName);
-    if (!safeName || safeName === '.' || safeName === '..' || safeName !== originalName) {
-      return cb(new Error('Invalid file name.'));
+    try {
+      const safeName = getSafeFilename(file.originalname);
+      return cb(null, safeName);
+    } catch (error) {
+      return cb(error);
     }
-    return cb(null, safeName);
   },
 });
 
@@ -166,6 +169,16 @@ const upload = multer({ storage });
 
 const createRateLimiter = ({ windowMs, maxRequests }) => {
   const hits = new Map();
+  const cleanup = () => {
+    const now = Date.now();
+    for (const [key, entry] of hits.entries()) {
+      if (now - entry.start >= windowMs) {
+        hits.delete(key);
+      }
+    }
+  };
+  const cleanupInterval = setInterval(cleanup, windowMs);
+  cleanupInterval.unref();
   return (req, res, next) => {
     const key = req.ip || 'unknown';
     const now = Date.now();
@@ -188,6 +201,21 @@ const uploadRateLimiter = createRateLimiter({
   windowMs: UPLOAD_RATE_LIMIT_WINDOW_MS,
   maxRequests: UPLOAD_RATE_LIMIT_MAX_REQUESTS,
 });
+
+const getSafeFilename = (originalName) => {
+  const safeName = path.basename(originalName || 'upload');
+  if (!safeName || safeName === '.' || safeName === '..' || safeName !== originalName) {
+    throw new Error('Invalid file name.');
+  }
+  if (INVALID_FILENAME_CHARS.test(safeName) || TRAILING_DOTS_SPACES.test(safeName)) {
+    throw new Error('Invalid file name.');
+  }
+  const parsedName = path.parse(safeName).name;
+  if (WINDOWS_RESERVED_NAMES.test(parsedName)) {
+    throw new Error('Invalid file name.');
+  }
+  return safeName;
+};
 
 app.get('/', (req, res) => {
   res.type('html').send(`<!doctype html>
