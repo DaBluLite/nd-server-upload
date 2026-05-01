@@ -8,8 +8,12 @@ import rateLimit from "express-rate-limit";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
+import cors from "cors";
 
 const app = express();
+
+app.use(cors());
+
 const PORT = Number(process.env.PORT) || 3000;
 const PASSWORD_ENV = "UPLOAD_PASSWORD";
 

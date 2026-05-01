@@ -1,4 +1,4 @@
-# nd-server-upload
+# Naviload - Navidrome Upload Server
 A small server tool to easily upload songs to Navidrome without SSH/FTP.
 
 ## Setup
