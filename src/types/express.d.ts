@@ -5,6 +5,8 @@ declare global {
     interface Request {
       uploadBasePath?: string;
       uploadDir?: string;
+      uploadFolderMode?: "fixed" | "pattern";
+      uploadFolderPattern?: string;
     }
   }
 }

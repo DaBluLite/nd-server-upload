@@ -6,6 +6,7 @@ import express, {
 } from "express";
 import rateLimit from "express-rate-limit";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import multer from "multer";
 import cors from "cors";
@@ -21,13 +22,40 @@ const PROJECT_ROOT = path.resolve(__dirname, "..");
 const CONFIG_DIR = path.join(PROJECT_ROOT, "config");
 const DESTINATION_PATH_FILE = path.join(CONFIG_DIR, "destination-path.txt");
 const CLIENT_DIST_DIR = path.join(PROJECT_ROOT, "client", "dist");
+const UPLOAD_TEMP_DIR = path.join(os.tmpdir(), "nd-server-upload");
 const UPLOAD_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const UPLOAD_RATE_LIMIT_MAX_REQUESTS = 30;
 const CLIENT_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const CLIENT_RATE_LIMIT_MAX_REQUESTS = 120;
 const WINDOWS_RESERVED_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 const INVALID_FILENAME_CHARS = /[<>:"/\\|?*\x00-\x1F]/;
+const INVALID_PATH_SEGMENT_CHARS = /[<>:"/\\|?*\x00-\x1F]/g;
 const TRAILING_DOTS_SPACES = /[. ]+$/;
+const DEFAULT_FOLDER_PATTERN = "{artist}/{album}";
+const FOLDER_PATTERN_TOKENS = [
+  "artist",
+  "albumartist",
+  "album",
+  "title",
+  "year",
+  "genre",
+  "track",
+  "disc",
+] as const;
+const FOLDER_PATTERN_TOKEN_SET = new Set<string>(FOLDER_PATTERN_TOKENS);
+
+type TrackMetadata = {
+  common: {
+    artist?: string;
+    albumartist?: string;
+    album?: string;
+    title?: string;
+    year?: number;
+    genre?: string[];
+    track?: { no?: number | null };
+    disk?: { no?: number | null };
+  };
+};
 
 let destinationReadErrorLogged = false;
 
@@ -107,6 +135,103 @@ const resolveUploadDirectory = (basePath: string, subdir: string) => {
   return targetDir;
 };
 
+const prepareUploadDirectory = (basePath: string, subdir: string) => {
+  const targetDir = resolveUploadDirectory(basePath, subdir);
+  ensureDirectory(targetDir);
+  const resolvedTargetDir = fs.realpathSync(targetDir);
+  const relativeTarget = path.relative(basePath, resolvedTargetDir);
+  if (relativeTarget.startsWith("..") || path.isAbsolute(relativeTarget)) {
+    throw new Error(
+      "Subdirectory must stay within the configured destination path.",
+    );
+  }
+  return resolvedTargetDir;
+};
+
+const getFolderModeFromRequest = (req: Request): "fixed" | "pattern" => {
+  const rawMode = (req.header("x-upload-folder-mode") ?? "").trim().toLowerCase();
+  if (!rawMode) {
+    return "fixed";
+  }
+  if (rawMode === "fixed" || rawMode === "pattern") {
+    return rawMode;
+  }
+  throw new Error('Folder mode must be either "fixed" or "pattern".');
+};
+
+const getFolderPatternFromRequest = (req: Request): string => {
+  const headerValue = req.header("x-upload-folder-pattern");
+  if (typeof headerValue === "string" && headerValue.trim()) {
+    return headerValue.trim();
+  }
+  return DEFAULT_FOLDER_PATTERN;
+};
+
+const validateFolderPattern = (pattern: string) => {
+  const tokenPattern = /\{([a-zA-Z]+)\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = tokenPattern.exec(pattern)) !== null) {
+    const token = match[1].toLowerCase();
+    if (!FOLDER_PATTERN_TOKEN_SET.has(token)) {
+      throw new Error(
+        `Unknown folder pattern token {${match[1]}}. Supported tokens: ${FOLDER_PATTERN_TOKENS.map(
+          (supported) => `{${supported}}`,
+        ).join(", ")}.`,
+      );
+    }
+  }
+};
+
+const sanitizePatternSegment = (value: string) =>
+  value
+    .replace(INVALID_PATH_SEGMENT_CHARS, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(TRAILING_DOTS_SPACES, "");
+
+const renderFolderPattern = (
+  pattern: string,
+  metadata: TrackMetadata,
+  originalName: string,
+) => {
+  validateFolderPattern(pattern);
+  const common = metadata.common;
+  const fallbackTitle = path.parse(originalName).name;
+  const tokens: Record<string, string> = {
+    artist: common.artist || common.albumartist || "Unknown Artist",
+    albumartist: common.albumartist || common.artist || "Unknown Artist",
+    album: common.album || "Unknown Album",
+    title: common.title || fallbackTitle,
+    year: common.year ? String(common.year) : "",
+    genre: common.genre?.[0] || "",
+    track: common.track?.no ? String(common.track.no).padStart(2, "0") : "",
+    disc: common.disk?.no ? String(common.disk.no).padStart(2, "0") : "",
+  };
+  const rendered = pattern.replace(
+    /\{([a-zA-Z]+)\}/g,
+    (_match, rawToken: string) =>
+      sanitizePatternSegment(tokens[rawToken.toLowerCase()] ?? ""),
+  );
+  return sanitizeSubdir(rendered);
+};
+
+const moveFile = async (sourcePath: string, destinationPath: string) => {
+  try {
+    await fs.promises.rename(sourcePath, destinationPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EXDEV") {
+      throw error;
+    }
+    await fs.promises.copyFile(sourcePath, destinationPath);
+    await fs.promises.unlink(sourcePath);
+  }
+};
+
+const readTrackMetadata = async (filePath: string) => {
+  const { parseFile } = await import("music-metadata");
+  return parseFile(filePath, { duration: false, skipCovers: true });
+};
+
 const getPasswordFromRequest = (req: Request): string =>
   req.header("x-upload-password") ?? "";
 
@@ -157,20 +282,19 @@ const loadUploadDir = (req: Request, res: Response, next: NextFunction) => {
   try {
     ensureDirectory(basePath);
     const resolvedBasePath = fs.realpathSync(basePath);
-    const targetDir = resolveUploadDirectory(
-      resolvedBasePath,
-      getSubdirFromRequest(req),
-    );
-    ensureDirectory(targetDir);
-    const resolvedTargetDir = fs.realpathSync(targetDir);
-    const relativeTarget = path.relative(resolvedBasePath, resolvedTargetDir);
-    if (relativeTarget.startsWith("..") || path.isAbsolute(relativeTarget)) {
-      throw new Error(
-        "Subdirectory must stay within the configured destination path.",
+    const folderMode = getFolderModeFromRequest(req);
+    req.uploadBasePath = resolvedBasePath;
+    req.uploadFolderMode = folderMode;
+    if (folderMode === "pattern") {
+      const folderPattern = getFolderPatternFromRequest(req);
+      validateFolderPattern(folderPattern);
+      req.uploadFolderPattern = folderPattern;
+    } else {
+      req.uploadDir = prepareUploadDirectory(
+        resolvedBasePath,
+        getSubdirFromRequest(req),
       );
     }
-    req.uploadBasePath = resolvedBasePath;
-    req.uploadDir = resolvedTargetDir;
   } catch (error) {
     return res.status(400).json({ error: (error as Error).message });
   }
@@ -179,6 +303,14 @@ const loadUploadDir = (req: Request, res: Response, next: NextFunction) => {
 
 const storage = multer.diskStorage({
   destination: (req, _file, cb) => {
+    if (req.uploadFolderMode === "pattern") {
+      try {
+        ensureDirectory(UPLOAD_TEMP_DIR);
+        return cb(null, UPLOAD_TEMP_DIR);
+      } catch (error) {
+        return cb(error as Error, "");
+      }
+    }
     if (!req.uploadDir) {
       return cb(new Error("Upload destination not configured."), "");
     }
@@ -187,6 +319,12 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => {
     try {
       const safeName = getSafeFilename(file.originalname);
+      if (req.uploadFolderMode === "pattern") {
+        return cb(
+          null,
+          `${crypto.randomUUID()}${path.extname(safeName).slice(0, 16)}`,
+        );
+      }
       return cb(null, safeName);
     } catch (error) {
       return cb(error as Error, "");
@@ -250,17 +388,42 @@ app.post(
   requirePassword,
   loadUploadDir,
   upload.single("file"),
-  (req, res) => {
+  async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded." });
     }
-    const relativePath = req.uploadBasePath
-      ? path.relative(req.uploadBasePath, req.file.path)
-      : req.file.filename;
-    return res.json({
-      message: `Uploaded ${req.file.originalname}.`,
-      storedAs: relativePath,
-    });
+    const uploadedPath = req.file.path;
+    try {
+      const safeName = getSafeFilename(req.file.originalname);
+      let storedPath = uploadedPath;
+      if (req.uploadFolderMode === "pattern") {
+        if (!req.uploadBasePath) {
+          throw new Error("Upload destination not configured.");
+        }
+        const metadata = await readTrackMetadata(uploadedPath);
+        const subdir = renderFolderPattern(
+          req.uploadFolderPattern ?? DEFAULT_FOLDER_PATTERN,
+          metadata,
+          safeName,
+        );
+        const targetDir = prepareUploadDirectory(req.uploadBasePath, subdir);
+        storedPath = path.join(targetDir, safeName);
+        await moveFile(uploadedPath, storedPath);
+      }
+      if (!req.uploadBasePath) {
+        throw new Error("Upload destination not configured.");
+      }
+      const relativePath = path.relative(req.uploadBasePath, storedPath);
+      return res.json({
+        message: `Uploaded ${safeName}.`,
+        storedAs: relativePath,
+      });
+    } catch (error) {
+      if (req.uploadFolderMode === "pattern") {
+        await fs.promises.rm(uploadedPath, { force: true }).catch(() => undefined);
+      }
+      return res.status(400).json({ error: (error as Error).message });
+    }
   },
 );
 

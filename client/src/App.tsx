@@ -1,6 +1,19 @@
-import { type FormEvent, useRef, useState } from "react";
+import { type SubmitEventHandler, useRef, useState } from "react";
 
 const PASSWORD_ENV = "UPLOAD_PASSWORD";
+const DEFAULT_FOLDER_PATTERN = "{artist}/{album}";
+const FOLDER_PATTERN_TOKENS = [
+  "artist",
+  "albumartist",
+  "album",
+  "title",
+  "year",
+  "genre",
+  "track",
+  "disc",
+] as const;
+
+type FolderMode = "pattern" | "fixed";
 
 type Status = {
   message: string;
@@ -9,13 +22,15 @@ type Status = {
 
 function App() {
   const [password, setPassword] = useState("");
+  const [folderMode, setFolderMode] = useState<FolderMode>("pattern");
+  const [folderPattern, setFolderPattern] = useState(DEFAULT_FOLDER_PATTERN);
   const [subdir, setSubdir] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit: SubmitEventHandler<HTMLFormElement> = async (event) => {
     event.preventDefault();
     setStatus(null);
 
@@ -30,11 +45,17 @@ function App() {
     try {
       setIsSubmitting(true);
       const trimmedSubdir = subdir.trim();
+      const trimmedPattern = folderPattern.trim() || DEFAULT_FOLDER_PATTERN;
       const response = await fetch("/upload", {
         method: "POST",
         headers: {
           "x-upload-password": password,
-          ...(trimmedSubdir ? { "x-upload-subdir": trimmedSubdir } : {}),
+          "x-upload-folder-mode": folderMode,
+          ...(folderMode === "pattern"
+            ? { "x-upload-folder-pattern": trimmedPattern }
+            : trimmedSubdir
+              ? { "x-upload-subdir": trimmedSubdir }
+              : {}),
         },
         body: formData,
       });
@@ -66,7 +87,7 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100">
+    <div className="min-h-screen">
       <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col items-center justify-center gap-6 px-6 py-12">
         <header className="space-y-3">
           <h1 className="text-3xl font-thin text-center w-full">
@@ -93,19 +114,95 @@ function App() {
             />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-bold uppercase text-zinc-700 dark:text-zinc-400">
-              Destination subfolder (optional)
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-1 text-xs font-bold uppercase text-zinc-700 dark:text-zinc-400">
+              Destination folder
+            </legend>
+
+            <label className="use-transition flex cursor-pointer items-start gap-3 rounded-md border border-faint bg-zinc-950/20 px-3 py-2 hover:bg-second-layer-thin-hover dark:hover:bg-second-layer-thin-hover-dark">
+              <input
+                type="radio"
+                name="folderMode"
+                value="pattern"
+                checked={folderMode === "pattern"}
+                onChange={() => setFolderMode("pattern")}
+                className="mt-1 accent-[#0084ff]"
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="text-sm">Create folders from song metadata</span>
+                <span className="text-xs text-zinc-500">
+                  Each song is placed using a pattern. The default is{" "}
+                  <code>{DEFAULT_FOLDER_PATTERN}</code>.
+                </span>
+              </span>
             </label>
-            <input
-              type="text"
-              name="subdir"
-              value={subdir}
-              onChange={(event) => setSubdir(event.target.value)}
-              placeholder="e.g. rock/2024"
-              className="w-full use-transition px-3 py-2 bg-second-layer-thin dark:bg-second-layer-thin-dark focus:bg-second-layer-thin-active dark:focus:bg-second-layer-thin-dark-active border border-faint shadow-glass rounded-md outline-none focus:border-subtle"
-            />
-          </div>
+
+            {folderMode === "pattern" ? (
+              <div className="flex flex-col gap-1 pl-7">
+                <label
+                  htmlFor="folder-pattern"
+                  className="text-xs font-bold uppercase text-zinc-700 dark:text-zinc-400"
+                >
+                  Folder pattern
+                </label>
+                <input
+                  id="folder-pattern"
+                  type="text"
+                  name="folderPattern"
+                  value={folderPattern}
+                  onChange={(event) => setFolderPattern(event.target.value)}
+                  placeholder={DEFAULT_FOLDER_PATTERN}
+                  className="use-transition w-full rounded-md border border-faint bg-second-layer-thin px-3 py-2 outline-none focus:border-subtle focus:bg-second-layer-thin-active dark:bg-second-layer-thin-dark dark:focus:bg-second-layer-thin-dark-active"
+                />
+                <p className="text-xs text-zinc-500">
+                  Available tokens:{" "}
+                  {FOLDER_PATTERN_TOKENS.map((token, index) => (
+                    <span key={token}>
+                      <code>{`{${token}}`}</code>
+                      {index < FOLDER_PATTERN_TOKENS.length - 1 ? ", " : ""}
+                    </span>
+                  ))}
+                </p>
+              </div>
+            ) : null}
+
+            <label className="use-transition flex cursor-pointer items-start gap-3 rounded-md border border-faint bg-zinc-950/20 px-3 py-2 hover:bg-second-layer-thin-hover dark:hover:bg-second-layer-thin-hover-dark">
+              <input
+                type="radio"
+                name="folderMode"
+                value="fixed"
+                checked={folderMode === "fixed"}
+                onChange={() => setFolderMode("fixed")}
+                className="mt-1 accent-[#0084ff]"
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="text-sm">Use one folder for all songs</span>
+                <span className="text-xs text-zinc-500">
+                  Leave the subfolder blank to upload into the destination root.
+                </span>
+              </span>
+            </label>
+
+            {folderMode === "fixed" ? (
+              <div className="flex flex-col gap-1 pl-7">
+                <label
+                  htmlFor="subdir"
+                  className="text-xs font-bold uppercase text-zinc-700 dark:text-zinc-400"
+                >
+                  Destination subfolder (optional)
+                </label>
+                <input
+                  id="subdir"
+                  type="text"
+                  name="subdir"
+                  value={subdir}
+                  onChange={(event) => setSubdir(event.target.value)}
+                  placeholder="e.g. rock/2024"
+                  className="use-transition w-full rounded-md border border-faint bg-second-layer-thin px-3 py-2 outline-none focus:border-subtle focus:bg-second-layer-thin-active dark:bg-second-layer-thin-dark dark:focus:bg-second-layer-thin-dark-active"
+                />
+              </div>
+            ) : null}
+          </fieldset>
 
           <div className="flex flex-col gap-1">
             <label className="text-xs font-bold uppercase text-zinc-700 dark:text-zinc-400">
