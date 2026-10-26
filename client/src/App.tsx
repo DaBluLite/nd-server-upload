@@ -18,6 +18,12 @@ type FolderMode = "pattern" | "fixed";
 type Status = {
   message: string;
   ok: boolean;
+  details?: string[];
+};
+
+type UploadProgress = {
+  current: number;
+  total: number;
 };
 
 function App() {
@@ -25,8 +31,9 @@ function App() {
   const [folderMode, setFolderMode] = useState<FolderMode>("pattern");
   const [folderPattern, setFolderPattern] = useState(DEFAULT_FOLDER_PATTERN);
   const [subdir, setSubdir] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState<Status | null>(null);
+  const [progress, setProgress] = useState<UploadProgress | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -34,47 +41,82 @@ function App() {
     event.preventDefault();
     setStatus(null);
 
-    if (!file) {
-      setStatus({ message: "Please choose a file to upload.", ok: false });
+    if (files.length === 0) {
+      setStatus({
+        message: "Please choose at least one file to upload.",
+        ok: false,
+      });
       return;
     }
-
-    const formData = new FormData();
-    formData.append("file", file);
 
     try {
       setIsSubmitting(true);
       const trimmedSubdir = subdir.trim();
       const trimmedPattern = folderPattern.trim() || DEFAULT_FOLDER_PATTERN;
-      const response = await fetch("/upload", {
-        method: "POST",
-        headers: {
-          "x-upload-password": password,
-          "x-upload-folder-mode": folderMode,
-          ...(folderMode === "pattern"
-            ? { "x-upload-folder-pattern": trimmedPattern }
-            : trimmedSubdir
-              ? { "x-upload-subdir": trimmedSubdir }
-              : {}),
-        },
-        body: formData,
-      });
-      const payload = (await response.json().catch(() => ({}))) as {
-        error?: string;
-        message?: string;
+      const headers = {
+        "x-upload-password": password,
+        "x-upload-folder-mode": folderMode,
+        ...(folderMode === "pattern"
+          ? { "x-upload-folder-pattern": trimmedPattern }
+          : trimmedSubdir
+            ? { "x-upload-subdir": trimmedSubdir }
+            : {}),
       };
+      const failures: string[] = [];
+      let uploadedCount = 0;
 
-      if (!response.ok) {
-        setStatus({ message: payload.error ?? "Upload failed.", ok: false });
-        return;
+      for (const [index, currentFile] of files.entries()) {
+        setProgress({ current: index + 1, total: files.length });
+
+        const formData = new FormData();
+        formData.append("file", currentFile);
+
+        try {
+          const response = await fetch("/upload", {
+            method: "POST",
+            headers,
+            body: formData,
+          });
+          const payload = (await response.json().catch(() => ({}))) as {
+            error?: string;
+            message?: string;
+          };
+
+          if (!response.ok) {
+            failures.push(
+              `${currentFile.name}: ${payload.error ?? "Upload failed."}`,
+            );
+            continue;
+          }
+
+          uploadedCount += 1;
+        } catch {
+          failures.push(`${currentFile.name}: Network error.`);
+        }
       }
 
-      setStatus({ message: payload.message ?? "Upload complete.", ok: true });
-      setPassword("");
-      setSubdir("");
-      setFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+      if (failures.length === 0) {
+        setStatus({
+          message: `Uploaded ${uploadedCount} ${
+            uploadedCount === 1 ? "file" : "files"
+          }.`,
+          ok: true,
+        });
+        setPassword("");
+        setSubdir("");
+        setFiles([]);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+      } else {
+        setStatus({
+          message:
+            uploadedCount > 0
+              ? `Uploaded ${uploadedCount} of ${files.length} files.`
+              : "Upload failed.",
+          ok: false,
+          details: failures,
+        });
       }
     } catch {
       setStatus({
@@ -83,6 +125,7 @@ function App() {
       });
     } finally {
       setIsSubmitting(false);
+      setProgress(null);
     }
   };
 
@@ -206,16 +249,31 @@ function App() {
 
           <div className="flex flex-col gap-1">
             <label className="text-xs font-bold uppercase text-zinc-700 dark:text-zinc-400">
-              File
+              Files
             </label>
             <input
               ref={fileInputRef}
               type="file"
-              name="file"
+              name="files"
+              multiple
               required
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              disabled={isSubmitting}
+              onChange={(event) =>
+                setFiles(Array.from(event.target.files ?? []))
+              }
               className="file:btn-accent mt-2 w-full rounded-md border border-dashed border-subtle bg-zinc-950/40 px-3 py-2 text-sm text-slate-200 file:mr-4 file:rounded-sm file:px-3 file:py-2 file:text-sm file:font-medium file:text-white"
             />
+            <p className="text-xs text-zinc-500">
+              {files.length === 0
+                ? "You can select multiple files at once."
+                : `${files.length} ${
+                    files.length === 1 ? "file" : "files"
+                  } selected${
+                    files.length <= 3
+                      ? `: ${files.map((selectedFile) => selectedFile.name).join(", ")}`
+                      : ""
+                  }`}
+            </p>
           </div>
 
           <button
@@ -223,7 +281,13 @@ function App() {
             disabled={isSubmitting}
             className="btn-accent cursor-pointer w-full py-1.5 rounded-full"
           >
-            {isSubmitting ? "Uploading…" : "Upload"}
+            {isSubmitting
+              ? progress
+                ? `Uploading ${progress.current} of ${progress.total}…`
+                : "Uploading…"
+              : files.length > 1
+                ? `Upload ${files.length} files`
+                : "Upload"}
           </button>
         </form>
 
@@ -236,7 +300,17 @@ function App() {
                 : "border-rose-500/40 bg-rose-500/10 text-rose-200"
             }`}
           >
-            {status.message}
+            <p>{status.message}</p>
+            {status.details && status.details.length > 0 ? (
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-xs">
+                {status.details.slice(0, 5).map((detail, index) => (
+                  <li key={`${detail}-${index}`}>{detail}</li>
+                ))}
+                {status.details.length > 5 ? (
+                  <li>…and {status.details.length - 5} more.</li>
+                ) : null}
+              </ul>
+            ) : null}
           </div>
         ) : null}
       </div>

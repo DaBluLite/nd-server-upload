@@ -5,9 +5,9 @@
   "main": "dist/server.js",
   "scripts": {
     "dev:server": "tsx watch src/server.ts",
-    "dev:client": "pnpm --prefix client dev",
+    "dev:client": "pnpm --filter client dev",
     "build:server": "tsc -p tsconfig.json",
-    "build:client": "pnpm --prefix client build",
+    "build:client": "pnpm --filter client build",
     "build": "pnpm build:server && pnpm build:client",
     "start": "node dist/server.js",
     "test": "echo \"No tests specified\""

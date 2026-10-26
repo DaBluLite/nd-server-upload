@@ -2,27 +2,23 @@
 A small server tool to easily upload songs to Navidrome without SSH/FTP.
 
 ## Setup
-1. Install server dependencies:
+1. Install all dependencies from the repository root (this installs both the server and client):
    ```bash
    pnpm i
    ```
-2. Install client dependencies:
-   ```bash
-   pnpm --prefix client i
-   ```
-3. Set the upload password:
+2. Set the upload password:
    ```bash
    export UPLOAD_PASSWORD="your-strong-password"
    ```
-4. Build the client and server:
+3. Build the client and server:
    ```bash
    pnpm build
    ```
-5. Start the server:
+4. Start the server:
    ```bash
    pnpm start
    ```
-6. On first run, the server creates `config/destination-path.txt`. Add the absolute destination path (one line):
+5. On first run, the server creates `config/destination-path.txt`. Add the absolute destination path (one line):
    ```text
    /absolute/path/to/your/navidrome/music
    ```
@@ -33,11 +29,11 @@ Run the API and UI in separate terminals:
 pnpm dev:server
 ```
 ```bash
-pnpm --prefix client dev
+pnpm dev:client
 ```
 
 ## Uploading
-Open `http://localhost:3000` in a browser to use the simple UI.
+Open `http://localhost:3000` in a browser to use the simple UI. You can select multiple files at once; they are uploaded one by one with the same folder settings.
 
 The UI can place uploads in two ways:
 - **Folder pattern (default):** creates the destination folder from the song's metadata using the pattern `{artist}/{album}`. Any of these tokens can be used in a pattern: `{artist}`, `{albumartist}`, `{album}`, `{title}`, `{year}`, `{genre}`, `{track}`, `{disc}`.
